@@ -33,6 +33,14 @@ def usuario_atual(db: Sessao, token: Annotated[str | None, Depends(esquema_oauth
     return usuario
 
 
+def usuario_opcional(
+    db: Sessao, token: Annotated[str | None, Depends(esquema_oauth2)]
+) -> Usuario | None:
+    if not token:
+        return None
+    return usuario_atual(db, token)
+
+
 def exigir_papel(*papeis: Papel) -> Callable[[Usuario], Usuario]:
     def verificar(usuario: Annotated[Usuario, Depends(usuario_atual)]) -> Usuario:
         if usuario.papel not in papeis:
@@ -46,4 +54,6 @@ def exigir_papel(*papeis: Papel) -> Callable[[Usuario], Usuario]:
 
 
 UsuarioAtual = Annotated[Usuario, Depends(usuario_atual)]
+UsuarioOpcional = Annotated[Usuario | None, Depends(usuario_opcional)]
 Admin = Annotated[Usuario, Depends(exigir_papel(Papel.ADMIN))]
+Validador = Annotated[Usuario, Depends(exigir_papel(Papel.VALIDADOR))]

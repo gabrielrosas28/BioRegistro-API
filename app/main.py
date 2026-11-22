@@ -2,7 +2,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from app.core.config import get_settings
-from app.routers import auth, especies, usuarios
+from app.routers import auth, especies, registros, usuarios
 from app.services.erros import ErroNegocio, NaoAutenticado
 
 settings = get_settings()
@@ -26,6 +26,7 @@ def tratar_erro_negocio(_: Request, erro: ErroNegocio) -> JSONResponse:
 app.include_router(auth.router)
 app.include_router(usuarios.router)
 app.include_router(especies.router)
+app.include_router(registros.router)
 
 
 @app.get("/health", tags=["Sistema"])

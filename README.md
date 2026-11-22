@@ -65,6 +65,39 @@ curl -X POST http://localhost:8000/especies \
   -d '{"nome_popular": "Açaí", "nome_cientifico": "Euterpe oleracea", "familia": "Arecaceae"}'
 ```
 
+## Registros e validação
+
+Todo registro novo entra como `pendente`. O `id` pode ser o UUID gerado no aparelho; se for omitido, o servidor gera um.
+
+```bash
+curl -X POST http://localhost:8000/registros \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"especie_id": 1, "descricao": "Touceira com cachos maduros", "uso_tradicional": "Fruto batido para o vinho", "latitude": -1.455833, "longitude": -48.503889, "data_coleta": "2026-11-20"}'
+```
+
+Um validador aprova ou rejeita. A rejeição exige comentário com no mínimo 10 caracteres:
+
+```bash
+curl -X POST http://localhost:8000/registros/$ID/validacao \
+  -H "Authorization: Bearer $TOKEN_VALIDADOR" -H "Content-Type: application/json" \
+  -d '{"decisao": "rejeitado", "comentario": "A foto não permite confirmar a espécie"}'
+```
+
+Listagem com filtros e paginação:
+
+```bash
+curl "http://localhost:8000/registros?status=validado&especie_id=1&data_inicio=2026-11-01&pagina=1&tamanho=20"
+```
+
+Regras aplicadas:
+
+- latitude entre -90 e 90, longitude entre -180 e 180 e data da coleta que não seja futura;
+- só o coletor que criou o registro edita ou exclui, e apenas enquanto estiver pendente;
+- só validadores aprovam ou rejeitam, e ninguém valida o próprio registro;
+- um registro rejeitado é reenviado como um novo registro;
+- a exclusão é lógica (`deleted_at`), para a sincronização avisar o aplicativo;
+- sem login só aparecem registros validados; o coletor vê os validados e os próprios; validadores e administradores veem todos.
+
 ## Endpoints
 
 | Método | Rota | Descrição | Acesso |
@@ -74,8 +107,14 @@ curl -X POST http://localhost:8000/especies \
 | GET | /especies | Lista espécies | Público |
 | POST | /especies | Cadastra espécie | Admin |
 | PUT | /especies/{id} | Edita espécie | Admin |
+| POST | /registros | Cria registro | Autenticado |
+| GET | /registros | Lista com filtros e paginação | Público |
+| GET | /registros/{id} | Detalha registro com histórico de validação | Público |
+| PUT | /registros/{id} | Edita registro pendente | Dono do registro |
+| DELETE | /registros/{id} | Exclui registro pendente | Dono do registro |
+| POST | /registros/{id}/validacao | Aprova ou rejeita | Validador |
 
-As respostas de erro seguem o formato `{"detail": "..."}`: 401 sem token ou com token inválido, 403 quando o papel não tem permissão, 404 para recurso inexistente, 409 para e-mail ou nome científico repetido e 422 para dados inválidos.
+As respostas de erro seguem o formato `{"detail": "..."}`: 401 sem token ou com token inválido, 403 quando o papel não tem permissão, 404 para recurso inexistente ou fora da visibilidade do usuário, 409 para dado repetido ou registro que não está mais pendente e 422 para dados inválidos.
 
 ## Testes
 

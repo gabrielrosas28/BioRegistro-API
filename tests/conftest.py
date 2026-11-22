@@ -12,7 +12,7 @@ from app.core.config import get_settings
 from app.core.database import criar_engine, get_db
 from app.core.seguranca import criar_token, gerar_hash_senha
 from app.main import app
-from app.models import Papel, Usuario
+from app.models import Especie, Papel, Usuario
 
 RAIZ = Path(__file__).resolve().parent.parent
 SENHA_PADRAO = "senha-segura-123"
@@ -98,3 +98,43 @@ def coletor(criar_usuario: Callable[..., Usuario]) -> Usuario:
 @pytest.fixture
 def validador(criar_usuario: Callable[..., Usuario]) -> Usuario:
     return criar_usuario("validador@exemplo.com", Papel.VALIDADOR, nome="Beto Validador")
+
+
+def dados_registro(especie: Especie, **extra: object) -> dict[str, object]:
+    dados: dict[str, object] = {
+        "especie_id": especie.id,
+        "descricao": "Touceira com cachos maduros na beira do igarapé",
+        "uso_tradicional": "Fruto batido para o vinho de açaí",
+        "latitude": -1.455833,
+        "longitude": -48.503889,
+        "data_coleta": "2026-11-20",
+    }
+    dados.update(extra)
+    return dados
+
+
+def criar_registro(
+    cliente: TestClient, usuario: Usuario, especie: Especie, **extra: object
+) -> dict[str, object]:
+    resposta = cliente.post(
+        "/registros", json=dados_registro(especie, **extra), headers=cabecalho(usuario)
+    )
+    assert resposta.status_code == 201, resposta.text
+    return resposta.json()
+
+
+def nova_especie(db: Session, nome_popular: str, nome_cientifico: str) -> Especie:
+    especie = Especie(nome_popular=nome_popular, nome_cientifico=nome_cientifico)
+    db.add(especie)
+    db.commit()
+    return especie
+
+
+@pytest.fixture
+def acai(db: Session) -> Especie:
+    return nova_especie(db, "Açaí", "Euterpe oleracea")
+
+
+@pytest.fixture
+def andiroba(db: Session) -> Especie:
+    return nova_especie(db, "Andiroba", "Carapa guianensis")

@@ -20,3 +20,7 @@ class NaoEncontrado(ErroNegocio):
 
 class Conflito(ErroNegocio):
     status_code = 409
+
+
+class DadosInvalidos(ErroNegocio):
+    status_code = 422
