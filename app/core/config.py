@@ -8,9 +8,10 @@ class Settings(BaseSettings):
 
     nome_app: str = "BioRegistro API"
     database_url: str = "sqlite:///./bioregistro.db"
-    secret_key: str = "troque-esta-chave"
+    secret_key: str = "troque-esta-chave-antes-de-publicar-a-api"
     jwt_algoritmo: str = "HS256"
     jwt_expiracao_minutos: int = 60
+    bcrypt_rounds: int = 12
 
 
 @lru_cache
