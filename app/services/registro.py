@@ -1,17 +1,21 @@
+import heapq
 import uuid
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.core.geo import caixa_envolvente, distancia_km
 from app.models import Decisao, Papel, Registro, StatusRegistro, Usuario, Validacao
 from app.repositories.especie import EspecieRepository
 from app.repositories.registro import RegistroRepository
 from app.schemas.registro import (
+    BuscaProximos,
     FiltrosRegistro,
     PaginaRegistros,
     RegistroCriacao,
     RegistroEntrada,
     RegistroLeitura,
+    RegistroProximo,
     ValidacaoEntrada,
 )
 from app.services.erros import AcessoNegado, Conflito, DadosInvalidos, NaoEncontrado
@@ -32,6 +36,12 @@ def pode_ver(usuario: Usuario | None, registro: Registro) -> bool:
     return usuario.papel in PAPEIS_QUE_VEEM_TUDO or registro.coletor_id == usuario.id
 
 
+def escopo_visibilidade(usuario: Usuario | None) -> tuple[bool, int | None]:
+    if usuario is not None and usuario.papel in PAPEIS_QUE_VEEM_TUDO:
+        return False, None
+    return True, usuario.id if usuario is not None else None
+
+
 class RegistroService:
     def __init__(self, db: Session) -> None:
         self.db = db
@@ -39,18 +49,34 @@ class RegistroService:
         self.especies = EspecieRepository(db)
 
     def listar(self, filtros: FiltrosRegistro, usuario: Usuario | None) -> PaginaRegistros:
-        ve_tudo = usuario is not None and usuario.papel in PAPEIS_QUE_VEEM_TUDO
-        itens, total = self.registros.listar(
-            filtros,
-            apenas_validados=not ve_tudo,
-            incluir_do_coletor=usuario.id if usuario is not None and not ve_tudo else None,
-        )
+        apenas_validados, incluir_do_coletor = escopo_visibilidade(usuario)
+        itens, total = self.registros.listar(filtros, apenas_validados, incluir_do_coletor)
         return PaginaRegistros(
             itens=[RegistroLeitura.model_validate(r) for r in itens],
             total=total,
             pagina=filtros.pagina,
             tamanho=filtros.tamanho,
         )
+
+    def proximos(self, busca: BuscaProximos, usuario: Usuario | None) -> list[RegistroProximo]:
+        caixa = caixa_envolvente(busca.lat, busca.lon, busca.raio_km)
+        candidatos = self.registros.coordenadas_na_caixa(caixa, *escopo_visibilidade(usuario))
+        distancias = (
+            (distancia_km(busca.lat, busca.lon, lat, lon), registro_id)
+            for registro_id, lat, lon in candidatos
+        )
+        mais_proximos = heapq.nsmallest(
+            busca.limite, (par for par in distancias if par[0] <= busca.raio_km)
+        )
+        registros = {r.id: r for r in self.registros.buscar_varios(i for _, i in mais_proximos)}
+        return [
+            RegistroProximo(
+                **RegistroLeitura.model_validate(registros[registro_id]).model_dump(),
+                distancia_km=round(distancia, 3),
+            )
+            for distancia, registro_id in mais_proximos
+            if registro_id in registros
+        ]
 
     def detalhar(self, registro_id: uuid.UUID, usuario: Usuario | None) -> Registro:
         registro = self.registros.buscar_ativo(registro_id, detalhado=True)

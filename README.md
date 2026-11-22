@@ -98,6 +98,42 @@ Regras aplicadas:
 - a exclusão é lógica (`deleted_at`), para a sincronização avisar o aplicativo;
 - sem login só aparecem registros validados; o coletor vê os validados e os próprios; validadores e administradores veem todos.
 
+## Busca por proximidade
+
+`GET /registros/proximos` devolve os registros dentro de um raio em km, do mais próximo ao mais distante, com a distância calculada pela fórmula de Haversine:
+
+```bash
+curl "http://localhost:8000/registros/proximos?lat=-1.45&lon=-48.5&raio_km=20&limite=50"
+```
+
+Cada item traz os dados do registro e o campo `distancia_km`. Para não calcular a distância de todos os registros do banco, a consulta primeiro filtra por um retângulo de latitude e longitude em volta do ponto, com índice, e só aplica o Haversine aos candidatos. A busca considera os casos de borda, como raios que cruzam a linha de data (longitude ±180) ou chegam perto dos polos. A visibilidade é a mesma da listagem.
+
+## Sincronização offline
+
+O aplicativo guarda os registros no aparelho, cada um com um UUID gerado lá, e envia tudo em lote quando houver conexão:
+
+```bash
+curl -X POST http://localhost:8000/sync/registros   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json"   -d '{"registros": [{"id": "6f1c2b9e-3d4a-4f5b-8c7d-9e0a1b2c3d4e", "especie_id": 1, "descricao": "Touceira com cachos maduros", "uso_tradicional": "Fruto batido para o vinho", "latitude": -1.455833, "longitude": -48.503889, "data_coleta": "2026-11-20"}]}'
+```
+
+```json
+{"criados": ["6f1c2b9e-..."], "ignorados": [], "erros": []}
+```
+
+UUIDs que já existem no servidor vão para `ignorados`. Por isso, reenviar o mesmo lote, por exemplo depois de uma queda de conexão no meio do envio, não duplica nada. Um item com espécie inexistente volta em `erros` sem impedir o resto do lote. Cada envio aceita até 500 registros.
+
+Depois, o aplicativo pede o que mudou desde a última sincronização:
+
+```bash
+curl -H "Authorization: Bearer $TOKEN"   "http://localhost:8000/sync/registros?desde=2026-11-22T18:00:00Z"
+```
+
+```json
+{"alterados": [...], "excluidos": [{"id": "...", "excluido_em": "..."}], "sincronizado_em": "2026-11-22T19:00:58Z"}
+```
+
+`alterados` traz os registros criados, editados ou validados no período, com o histórico de validação. `excluidos` traz o que foi apagado, graças à exclusão lógica. O valor de `sincronizado_em` é a hora do servidor e deve ser enviado como `desde` na próxima chamada. Sem `desde`, a resposta traz tudo o que o usuário pode ver.
+
 ## Endpoints
 
 | Método | Rota | Descrição | Acesso |
@@ -113,8 +149,40 @@ Regras aplicadas:
 | PUT | /registros/{id} | Edita registro pendente | Dono do registro |
 | DELETE | /registros/{id} | Exclui registro pendente | Dono do registro |
 | POST | /registros/{id}/validacao | Aprova ou rejeita | Validador |
+| GET | /registros/proximos | Busca por raio | Público |
+| POST | /sync/registros | Recebe lote offline | Autenticado |
+| GET | /sync/registros?desde= | Devolve alterações e exclusões | Autenticado |
 
 As respostas de erro seguem o formato `{"detail": "..."}`: 401 sem token ou com token inválido, 403 quando o papel não tem permissão, 404 para recurso inexistente ou fora da visibilidade do usuário, 409 para dado repetido ou registro que não está mais pendente e 422 para dados inválidos.
+
+## Telas do Swagger
+
+Visão geral das rotas:
+
+![Visão geral do Swagger](docs/img/swagger-visao-geral.png)
+
+Busca por raio a partir de Belém:
+
+![Busca por raio](docs/img/swagger-busca-por-raio.png)
+
+Mesmo lote enviado pela segunda vez: o registro é ignorado e nada é duplicado.
+
+![Lote reenviado](docs/img/swagger-sync-lote-reenviado.png)
+
+Sincronização incremental:
+
+![Alterações desde a última sincronização](docs/img/swagger-sync-alteracoes.png)
+
+## Desempenho
+
+Medido com 10 mil registros num SQLite local, em mediana:
+
+| Consulta | Tempo |
+| --- | --- |
+| Busca por raio de 50 km | 7 ms |
+| Busca por raio de 5.000 km, com os 10 mil registros como candidatos | 17 ms |
+| Mesma busca devolvendo 500 registros | 32 ms |
+| Listagem com filtros e paginação | 7 ms |
 
 ## Testes
 
@@ -128,13 +196,14 @@ pytest
 app/
   main.py
   criar_admin.py criação do primeiro administrador
-  core/          configuração, banco, senhas e JWT
+  core/          configuração, banco, senhas, JWT e cálculo de distância
   models/        tabelas
   schemas/       entrada e saída da API
   repositories/  consultas ao banco
   services/      regras de negócio
   routers/       rotas HTTP
 alembic/         migrações
+docs/img/        prints do Swagger
 tests/
 ```
 

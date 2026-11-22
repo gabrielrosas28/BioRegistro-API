@@ -18,6 +18,8 @@ from app.schemas.especie import EspecieLeitura
 TAMANHO_MAXIMO_TEXTO = 5000
 TAMANHO_MINIMO_COMENTARIO_REJEICAO = 10
 TAMANHO_MAXIMO_PAGINA = 100
+RAIO_MAXIMO_KM = 20000
+LIMITE_MAXIMO_PROXIMOS = 500
 CASAS_DECIMAIS_COORDENADA = 6
 
 TextoLongo = Annotated[
@@ -173,3 +175,19 @@ class PaginaRegistros(BaseModel):
     total: int
     pagina: int
     tamanho: int
+
+
+class BuscaProximos(BaseModel):
+    lat: float = Field(ge=-90, le=90, description="Latitude do ponto de referência (WGS 84)")
+    lon: float = Field(ge=-180, le=180, description="Longitude do ponto de referência (WGS 84)")
+    raio_km: float = Field(gt=0, le=RAIO_MAXIMO_KM, description="Raio da busca em km")
+    limite: int = Field(
+        default=50,
+        ge=1,
+        le=LIMITE_MAXIMO_PROXIMOS,
+        description="Quantidade máxima de registros devolvidos",
+    )
+
+
+class RegistroProximo(RegistroLeitura):
+    distancia_km: float

@@ -1,3 +1,5 @@
+from collections.abc import Iterable
+
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -14,6 +16,9 @@ class EspecieRepository:
 
     def buscar_por_id(self, especie_id: int) -> Especie | None:
         return self.db.get(Especie, especie_id)
+
+    def ids_existentes(self, ids: Iterable[int]) -> set[int]:
+        return set(self.db.scalars(select(Especie.id).where(Especie.id.in_(list(ids)))))
 
     def buscar_por_nome_cientifico(self, nome_cientifico: str) -> Especie | None:
         consulta = select(Especie).where(

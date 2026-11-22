@@ -7,11 +7,13 @@ from app.models import Registro
 from app.routers.dependencias import Sessao, UsuarioAtual, UsuarioOpcional, Validador
 from app.schemas.comum import Erro
 from app.schemas.registro import (
+    BuscaProximos,
     FiltrosRegistro,
     PaginaRegistros,
     RegistroCriacao,
     RegistroDetalhe,
     RegistroEntrada,
+    RegistroProximo,
     ValidacaoEntrada,
 )
 from app.services.registro import RegistroService
@@ -63,6 +65,22 @@ def listar_registros(
     filtros: Annotated[FiltrosRegistro, Query()], db: Sessao, usuario: UsuarioOpcional
 ) -> PaginaRegistros:
     return RegistroService(db).listar(filtros, usuario)
+
+
+@router.get(
+    "/proximos",
+    response_model=list[RegistroProximo],
+    summary="Busca registros dentro de um raio",
+    description=(
+        "Calcula a distância pela fórmula de Haversine e devolve os registros dentro de "
+        f"`raio_km`, do mais próximo ao mais distante. {VISIBILIDADE}"
+    ),
+    responses=ERRO_401,
+)
+def buscar_proximos(
+    busca: Annotated[BuscaProximos, Query()], db: Sessao, usuario: UsuarioOpcional
+) -> list[RegistroProximo]:
+    return RegistroService(db).proximos(busca, usuario)
 
 
 @router.get(
